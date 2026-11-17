@@ -1,0 +1,203 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ICON-D2 PV-Prognose",
+        "description": "Location and system. The forecast uses only the DWD ICON-D2 model (~2 km, ~48 h).",
+        "data": {
+          "name": "Name",
+          "latitude": "Latitude",
+          "longitude": "Longitude",
+          "system_loss": "System losses",
+          "inverter_limit": "Inverter limit (AC)"
+        },
+        "data_description": {
+          "system_loss": "Cables, inverter, soiling, mismatch. Typically 10–16 %.",
+          "inverter_limit": "Maximum AC power the forecast is clipped to. 0 = no limit."
+        }
+      },
+      "string": {
+        "title": "PV string",
+        "description": "One array with uniform tilt and orientation.",
+        "data": {
+          "name": "String name",
+          "kwp": "Power (kWp)",
+          "tilt": "Tilt",
+          "azimuth": "Azimuth",
+          "horizon": "Horizon profile / shading",
+          "efficiency": "Efficiency factor",
+          "damping_morning": "Morning damping",
+          "damping_evening": "Evening damping",
+          "temp_coeff": "Temperature coefficient",
+          "albedo": "Ground reflection (albedo)"
+        },
+        "data_description": {
+          "kwp": "DC nameplate power of this string.",
+          "tilt": "0° = horizontal, 90° = vertical.",
+          "azimuth": "0° = north, 90° = east, 180° = south, 270° = west.",
+          "horizon": "Pairs azimuth:elevation, e.g. 90:5, 135:25, 180:8, 250:15. Direct sunlight is blocked while the sun is below this line. Empty = free horizon.",
+          "efficiency": "Fine tuning for this string only. 100 % = model unchanged.",
+          "damping_morning": "Reduces the forecast for low morning sun (full at horizon, none above 30° sun elevation).",
+          "damping_evening": "Same as morning, for afternoon/evening.",
+          "temp_coeff": "From the module datasheet, typically −0.30 to −0.40 %/K.",
+          "albedo": "Share of light reflected by the ground: grass 0.2, snow up to 0.8."
+        }
+      },
+      "more": {
+        "title": "More strings?",
+        "menu_options": {
+          "string": "Add another string",
+          "finish": "Finish"
+        }
+      }
+    },
+    "error": {
+      "invalid_horizon": "Invalid horizon profile. Format: azimuth:elevation, e.g. 90:5, 180:10",
+      "name_required": "Please enter a name."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ICON-D2 PV-Prognose",
+        "menu_options": {
+          "settings": "System, fine tuning & calibration",
+          "add_string": "Add string",
+          "edit_string": "Edit string",
+          "remove_string": "Remove string"
+        }
+      },
+      "settings": {
+        "title": "System, fine tuning & calibration",
+        "data": {
+          "system_loss": "System losses",
+          "inverter_limit": "Inverter limit (AC)",
+          "global_factor": "Overall factor",
+          "calibration": "Automatic calibration",
+          "calibration_entity": "Actual production (energy sensor)",
+          "calibration_days": "Learning period"
+        },
+        "data_description": {
+          "system_loss": "Cables, inverter, soiling, mismatch. Typically 10–16 %.",
+          "inverter_limit": "Maximum AC power the forecast is clipped to. 0 = no limit.",
+          "global_factor": "Manual fine tuning of the whole system. 100 % = unchanged.",
+          "calibration": "Compares yesterday's forecast with actual production every day and learns a correction factor (median of recent days).",
+          "calibration_entity": "PV production meter in kWh/Wh with long-term statistics. Not grid export!",
+          "calibration_days": "Number of recent days used for the factor."
+        }
+      },
+      "add_string": {
+        "title": "Add string",
+        "data": {
+          "name": "String name",
+          "kwp": "Power (kWp)",
+          "tilt": "Tilt",
+          "azimuth": "Azimuth",
+          "horizon": "Horizon profile / shading",
+          "efficiency": "Efficiency factor",
+          "damping_morning": "Morning damping",
+          "damping_evening": "Evening damping",
+          "temp_coeff": "Temperature coefficient",
+          "albedo": "Ground reflection (albedo)"
+        },
+        "data_description": {
+          "kwp": "DC nameplate power of this string.",
+          "tilt": "0° = horizontal, 90° = vertical.",
+          "azimuth": "0° = north, 90° = east, 180° = south, 270° = west.",
+          "horizon": "Pairs azimuth:elevation, e.g. 90:5, 135:25, 180:8, 250:15. Direct sunlight is blocked while the sun is below this line. Empty = free horizon.",
+          "efficiency": "Fine tuning for this string only. 100 % = model unchanged.",
+          "damping_morning": "Reduces the forecast for low morning sun (full at horizon, none above 30° sun elevation).",
+          "damping_evening": "Same as morning, for afternoon/evening.",
+          "temp_coeff": "From the module datasheet, typically −0.30 to −0.40 %/K.",
+          "albedo": "Share of light reflected by the ground: grass 0.2, snow up to 0.8."
+        }
+      },
+      "edit_string": {
+        "title": "Edit string",
+        "data": {
+          "id": "String"
+        }
+      },
+      "edit_string_values": {
+        "title": "Edit {name}",
+        "data": {
+          "name": "String name",
+          "kwp": "Power (kWp)",
+          "tilt": "Tilt",
+          "azimuth": "Azimuth",
+          "horizon": "Horizon profile / shading",
+          "efficiency": "Efficiency factor",
+          "damping_morning": "Morning damping",
+          "damping_evening": "Evening damping",
+          "temp_coeff": "Temperature coefficient",
+          "albedo": "Ground reflection (albedo)"
+        },
+        "data_description": {
+          "kwp": "DC nameplate power of this string.",
+          "tilt": "0° = horizontal, 90° = vertical.",
+          "azimuth": "0° = north, 90° = east, 180° = south, 270° = west.",
+          "horizon": "Pairs azimuth:elevation, e.g. 90:5, 135:25, 180:8, 250:15. Direct sunlight is blocked while the sun is below this line. Empty = free horizon.",
+          "efficiency": "Fine tuning for this string only. 100 % = model unchanged.",
+          "damping_morning": "Reduces the forecast for low morning sun (full at horizon, none above 30° sun elevation).",
+          "damping_evening": "Same as morning, for afternoon/evening.",
+          "temp_coeff": "From the module datasheet, typically −0.30 to −0.40 %/K.",
+          "albedo": "Share of light reflected by the ground: grass 0.2, snow up to 0.8."
+        }
+      },
+      "remove_string": {
+        "title": "Remove string",
+        "data": {
+          "id": "String"
+        }
+      }
+    },
+    "error": {
+      "invalid_horizon": "Invalid horizon profile. Format: azimuth:elevation, e.g. 90:5, 180:10",
+      "name_required": "Please enter a name.",
+      "calibration_entity_required": "Calibration needs an energy sensor."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power_now": {
+        "name": "Power now"
+      },
+      "energy_today": {
+        "name": "Energy today"
+      },
+      "energy_today_remaining": {
+        "name": "Energy today remaining"
+      },
+      "energy_tomorrow": {
+        "name": "Energy tomorrow"
+      },
+      "energy_next_hour": {
+        "name": "Energy next hour"
+      },
+      "peak_today": {
+        "name": "Peak power today"
+      },
+      "peak_tomorrow": {
+        "name": "Peak power tomorrow"
+      },
+      "calibration_factor": {
+        "name": "Calibration factor"
+      },
+      "string_power_now": {
+        "name": "Power now"
+      },
+      "string_energy_today": {
+        "name": "Energy today"
+      },
+      "string_energy_tomorrow": {
+        "name": "Energy tomorrow"
+      }
+    }
+  },
+  "services": {
+    "reset_calibration": {
+      "name": "Reset calibration",
+      "description": "Deletes all learned calibration values."
+    }
+  }
+}

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PV-Anlage</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #141a22; color: #dbe4ee;
+               font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #wrap { width: 100%; height: 100%; }
+  svg { display: block; width: 100%; height: 100%; }
+  .msg { padding: 16px; color: #ff9b9b; font-size: 14px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="wrap"></div>
+<script>
+// =====================================================================
+//  PV-Anlage: Draufsicht mit Sonnenstand + Tagesverlauf pro String
+//  Liest die Sensoren der Integration "ICON-D2 PV-Prognose" direkt aus
+//  Home Assistant (Seite muss als iframe-Karte unter /local/ laufen).
+//
+//  URL-Parameter = Entity-ID des Sensors "Energie heute" je String:
+//   ?ost=sensor.pv_prognose_dach_ost_energie_heute
+//   &sued=sensor.pv_prognose_dach_sud_energie_heute
+//   &west=sensor.pv_prognose_dach_west_energie_heute
+//   &zaun=sensor.pv_prognose_pv_zaun_energie_heute
+//   &gesamt=sensor.pv_prognose_energie_heute
+//  Fehlende Strings werden einfach nicht gezeichnet.  Test ohne HA: ?demo=1
+// =====================================================================
+const qs = new URLSearchParams(location.search);
+const DEMO = qs.has('demo');
+const STRINGS = [
+  { key: 'ost',  name: 'Ost',      color: '#ffb547' },
+  { key: 'sued', name: 'Süd',      color: '#ff7a59' },
+  { key: 'west', name: 'West',     color: '#b38cff' },
+  { key: 'zaun', name: 'PV-Zaun',  color: '#4fd1c5' },
+].filter(s => DEMO || qs.get(s.key));
+const C = { bg: '#141a22', panel: '#1b2330', grid: '#2a3544', text: '#dbe4ee', muted: '#7d8ea3',
+            roof: '#2b3646', ground: '#17202b', now: '#19e3b1' };
+
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, a = {}, text) => {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(a)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+};
+const fmt = (v, d = 1) => (v == null || isNaN(v)) ? '–' : Number(v).toFixed(d).replace('.', ',');
+const kw = w => w == null ? '–' : (w >= 1000 ? fmt(w / 1000, 2) + ' kW' : Math.round(w) + ' W');
+
+// ------------------------------------------------------------------ Daten
+function hass() {
+  try { return window.parent.document.querySelector('home-assistant').hass; } catch (e) { return null; }
+}
+function readData() {
+  if (DEMO) return demoData();
+  const h = hass();
+  if (!h) return { error: 'Keine Verbindung zu Home Assistant. Die Seite muss als Webseiten-Karte mit der URL /local/pv_anlage.html?… eingebunden sein.' };
+  const st = h.states;
+  const one = id => {
+    const s = st[id];
+    if (!s) return null;
+    const base = id.replace(/_energie_heute$/, '');
+    const p = st[base + '_leistung_jetzt'], m = st[base + '_energie_morgen'];
+    return { today: parseFloat(s.state), forecast: s.attributes.forecast || [],
+             forecastTomorrow: m ? (m.attributes.forecast || []) : [],
+             now: p ? parseFloat(p.state) : null, tomorrow: m ? parseFloat(m.state) : null };
+  };
+  const strings = STRINGS.map(s => ({ ...s, id: qs.get(s.key), ...(one(qs.get(s.key)) || { missing: true }) }));
+  const total = qs.get('gesamt') ? one(qs.get('gesamt')) : null;
+  const sun = st['sun.sun'] ? { az: st['sun.sun'].attributes.azimuth, el: st['sun.sun'].attributes.elevation } : null;
+  return { strings, total, sun };
+}
+
+function demoData() {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  // Novembertag mit Hochnebel am Vormittag: [Maximum um, Breite, Spitze kW]
+  const shape = { ost: [10.0, 1.6, 1.7], sued: [12.0, 1.9, 3.6], west: [13.8, 1.5, 1.5], zaun: [12.0, 1.8, 2.4] };
+  const strings = STRINGS.map(s => {
+    const [mu, sig, peak] = shape[s.key];
+    const fc = [];
+    for (let i = 0; i < 96; i++) {
+      const t = new Date(day.getTime() + i * 900e3), hr = i / 4 + 0.125;
+      const env = hr > 7.2 && hr < 16.4 ? Math.sin((hr - 7.2) / 9.2 * Math.PI) ** 0.6 : 0;
+      const fog = hr < 9.5 ? 0.35 + 0.65 * (hr - 7.2) / 2.3 : 1;
+      const p = peak * 1000 * env * fog * Math.exp(-((hr - mu) ** 2) / (2 * sig * sig) * 0.6);
+      fc.push({ datetime: t.toISOString(), power: Math.round(Math.max(p, 0)) });
+    }
+    const today = fc.reduce((a, p) => a + p.power / 4000, 0);
+    const nowIdx = Math.floor((Date.now() - day) / 900e3);
+    const fcT = fc.map(p => ({ datetime: new Date(new Date(p.datetime).getTime() + 864e5).toISOString(), power: Math.round(p.power * 0.8) }));
+    return { ...s, forecast: fc, forecastTomorrow: fcT, today, tomorrow: today * 0.8, now: fc[nowIdx]?.power ?? 0 };
+  });
+  const total = { today: strings.reduce((a, s) => a + s.today, 0), tomorrow: strings.reduce((a, s) => a + s.tomorrow, 0),
+                  now: strings.reduce((a, s) => a + s.now, 0) };
+  const hr = new Date().getHours() + new Date().getMinutes() / 60;
+  return { strings, total, sun: { az: 90 + (hr - 6) * 15, el: Math.max(-5, 22 * Math.sin((hr - 7.3) / 9 * Math.PI)) } };
+}
+
+// ------------------------------------------------------------------ Zeichnen
+function draw() {
+  const wrap = document.getElementById('wrap');
+  const d = readData();
+  if (d.error) { wrap.innerHTML = `<div class="msg">${d.error}</div>`; return; }
+  if (!d.strings.length) { wrap.innerHTML = '<div class="msg">Keine Strings angegeben. Beispiel: ?ost=sensor.…_energie_heute&sued=…</div>'; return; }
+
+  const H = 440, W = Math.max(860, Math.round(H * innerWidth / Math.max(1, innerHeight)));
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}` });
+  const defs = el('defs');
+  defs.innerHTML = `
+    <radialGradient id="sunG"><stop offset="0%" stop-color="#fff6c8"/><stop offset="45%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ffb547" stop-opacity="0"/></radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="cells" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="none" stroke="#0d1218" stroke-width="1.2"/></pattern>`;
+  svg.append(defs);
+  svg.append(el('rect', { x: 0, y: 0, width: W, height: H, rx: 14, fill: C.bg }));
+
+  const byKey = Object.fromEntries(d.strings.map(s => [s.key, s]));
+  const intensity = s => {
+    if (!s || s.missing) return 0;
+    const peak = Math.max(1, ...s.forecast.map(p => p.power));
+    return Math.min(1, Math.max(0, (s.now || 0) / peak));
+  };
+
+  // ---------------- Szene: Draufsicht (Norden oben)
+  const cx = 215, cy = 222, R = 178;
+  const scene = el('g');
+  scene.append(el('circle', { cx, cy, r: R, fill: C.ground, stroke: C.grid, 'stroke-width': 1.5 }));
+  for (let a = 0; a < 360; a += 15) {
+    const r1 = a % 90 === 0 ? R - 14 : R - 7, rad = (a - 90) * Math.PI / 180;
+    scene.append(el('line', { x1: cx + Math.cos(rad) * r1, y1: cy + Math.sin(rad) * r1,
+      x2: cx + Math.cos(rad) * R, y2: cy + Math.sin(rad) * R, stroke: C.grid, 'stroke-width': a % 90 ? 1 : 2 }));
+  }
+  [['N', 0], ['O', 90], ['S', 180], ['W', 270]].forEach(([t, a]) => {
+    const rad = (a - 90) * Math.PI / 180;
+    scene.append(el('text', { x: cx + Math.cos(rad) * (R - 28), y: cy + Math.sin(rad) * (R - 28) + 5,
+      'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: t === 'N' ? '#ff8f8f' : C.muted }, t));
+  });
+
+  // Sonne
+  if (d.sun) {
+    const up = d.sun.el > 0, rad = (d.sun.az - 90) * Math.PI / 180;
+    const rs = R + 2, sx = cx + Math.cos(rad) * rs, sy = cy + Math.sin(rad) * rs;
+    if (up) {
+      const ray = el('line', { x1: sx, y1: sy, x2: cx, y2: cy, stroke: '#ffd166', 'stroke-opacity': 0.18,
+        'stroke-width': 26 + d.sun.el, 'stroke-linecap': 'round' });
+      scene.append(ray);
+      scene.append(el('circle', { cx: sx, cy: sy, r: 26, fill: 'url(#sunG)' }));
+      scene.append(el('circle', { cx: sx, cy: sy, r: 9, fill: '#fff1b0', filter: 'url(#glow)' }));
+    } else {
+      scene.append(el('circle', { cx: sx, cy: sy, r: 7, fill: 'none', stroke: C.muted, 'stroke-dasharray': '2 3' }));
+    }
+    const lx = cx + Math.cos(rad) * (R + 30), ly = cy + Math.sin(rad) * (R + 30);
+    scene.append(el('text', { x: Math.min(Math.max(lx, 52), 380), y: Math.min(Math.max(ly + 4, 14), H - 8),
+      'text-anchor': 'middle', 'font-size': 11, fill: up ? '#ffd166' : C.muted },
+      up ? `${Math.round(d.sun.el)}° hoch` : 'unter Horizont'));
+  }
+
+  // Modulfläche zeichnen
+  const face = (s, pts, labelPos) => {
+    if (!s || s.missing) return;
+    const i = intensity(s);
+    const poly = pts.map(p => p.join(',')).join(' ');
+    scene.append(el('polygon', { points: poly, fill: C.roof, stroke: '#0d1218', 'stroke-width': 2 }));
+    const g = el('g', i > 0.05 ? { filter: 'url(#soft)' } : {});
+    g.append(el('polygon', { points: poly, fill: s.color, 'fill-opacity': (0.12 + 0.78 * i).toFixed(2) }));
+    scene.append(g);
+    scene.append(el('polygon', { points: poly, fill: 'url(#cells)', opacity: 0.7 }));
+    const [lx, ly] = labelPos;
+    scene.append(el('text', { x: lx, y: ly, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700,
+      fill: '#fff', 'paint-order': 'stroke', stroke: '#0d1218', 'stroke-width': 3 }, s.name));
+    scene.append(el('text', { x: lx, y: ly + 15, 'text-anchor': 'middle', 'font-size': 12,
+      fill: '#fff', 'paint-order': 'stroke', stroke: '#0d1218', 'stroke-width': 3 }, kw(s.now)));
+  };
+
+  // Haus mit Satteldach, First Nord-Süd -> Ost- und Westfläche
+  const hx = cx - 72, hy = cy - 92, hw = 144, hh = 118;
+  scene.append(el('rect', { x: hx - 6, y: hy - 6, width: hw + 12, height: hh + 12, rx: 3, fill: '#0f151d' }));
+  face(byKey.west, [[hx, hy], [cx, hy], [cx, hy + hh], [hx, hy + hh]], [hx + hw / 4, cy - 34]);
+  face(byKey.ost, [[cx, hy], [hx + hw, hy], [hx + hw, hy + hh], [cx, hy + hh]], [hx + hw * 3 / 4, cy - 34]);
+  if (byKey.west || byKey.ost)
+    scene.append(el('line', { x1: cx, y1: hy, x2: cx, y2: hy + hh, stroke: '#0d1218', 'stroke-width': 4 }));
+  // Anbau mit Süddach
+  const sx0 = cx - 54, sy0 = hy + hh + 10, sw = 108, sh = 46;
+  if (byKey.sued) {
+    scene.append(el('rect', { x: sx0 - 4, y: sy0 - 4, width: sw + 8, height: sh + 8, rx: 3, fill: '#0f151d' }));
+    face(byKey.sued, [[sx0, sy0], [sx0 + sw, sy0], [sx0 + sw, sy0 + sh], [sx0, sy0 + sh]], [cx, sy0 + 19]);
+  }
+  // PV-Zaun an der Südgrenze
+  if (byKey.zaun) {
+    const fy = cy + 128, fx0 = cx - 118, fx1 = cx + 118;
+    const z = byKey.zaun, i = intensity(z);
+    scene.append(el('rect', { x: fx0, y: fy - 6, width: fx1 - fx0, height: 12, rx: 2, fill: C.roof }));
+    scene.append(el('rect', { x: fx0, y: fy - 6, width: fx1 - fx0, height: 12, rx: 2, fill: z.color,
+      'fill-opacity': (0.15 + 0.8 * i).toFixed(2), filter: i > 0.05 ? 'url(#soft)' : '' }));
+    for (let x = fx0; x <= fx1; x += 236 / 8)
+      scene.append(el('line', { x1: x, y1: fy - 8, x2: x, y2: fy + 8, stroke: '#0d1218', 'stroke-width': 2 }));
+    scene.append(el('text', { x: cx, y: fy + 24, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: '#fff',
+      'paint-order': 'stroke', stroke: '#0d1218', 'stroke-width': 3 }, `${z.name} · ${kw(z.now)}`));
+  }
+  svg.append(scene);
+
+  // ---------------- rechte Seite: Kacheln + Diagramm
+  const X0 = 430, X1 = W - 24;
+  const total = d.total || { now: d.strings.reduce((a, s) => a + (s.now || 0), 0),
+                             today: d.strings.reduce((a, s) => a + (s.today || 0), 0),
+                             tomorrow: d.strings.reduce((a, s) => a + (s.tomorrow || 0), 0) };
+  svg.append(el('text', { x: X0, y: 40, 'font-size': 13, fill: C.muted }, 'Leistung jetzt'));
+  svg.append(el('text', { x: X0, y: 76, 'font-size': 34, 'font-weight': 700, fill: '#fff' }, kw(total.now)));
+  svg.append(el('text', { x: X0 + 230, y: 40, 'font-size': 13, fill: C.muted }, 'Heute'));
+  svg.append(el('text', { x: X0 + 230, y: 76, 'font-size': 26, 'font-weight': 700, fill: '#fff' }, `${fmt(total.today)} kWh`));
+  svg.append(el('text', { x: X0 + 410, y: 40, 'font-size': 13, fill: C.muted }, 'Morgen'));
+  svg.append(el('text', { x: X0 + 410, y: 76, 'font-size': 26, 'font-weight': 700, fill: C.text }, `${fmt(total.tomorrow)} kWh`));
+
+  // String-Kacheln
+  const n = d.strings.length, gap = 10, tw = (X1 - X0 - gap * (n - 1)) / n;
+  d.strings.forEach((s, k) => {
+    const x = X0 + k * (tw + gap), y = 96;
+    svg.append(el('rect', { x, y, width: tw, height: 64, rx: 10, fill: C.panel }));
+    svg.append(el('rect', { x, y, width: 4, height: 64, rx: 2, fill: s.color }));
+    svg.append(el('text', { x: x + 14, y: y + 20, 'font-size': 12, 'font-weight': 700, fill: s.color }, s.name));
+    if (s.missing) {
+      svg.append(el('text', { x: x + 14, y: y + 42, 'font-size': 11, fill: '#ff9b9b' }, 'Sensor fehlt'));
+      return;
+    }
+    svg.append(el('text', { x: x + 14, y: y + 41, 'font-size': 15, 'font-weight': 700, fill: '#fff' }, kw(s.now)));
+    svg.append(el('text', { x: x + 14, y: y + 57, 'font-size': 11, fill: C.muted },
+      `heute ${fmt(s.today)} · morgen ${fmt(s.tomorrow)} kWh`));
+  });
+
+  // Gestapeltes Tagesdiagramm
+  const cT = 186, cB = H - 34, cL = X0 + 34, cR = X1;
+  let valid = d.strings.filter(s => !s.missing && s.forecast.length);
+  let chartLabel = 'Heute';
+  const lastProd = Math.max(0, ...valid.flatMap(s => s.forecast.filter(p => p.power > 5).map(p => new Date(p.datetime).getTime())));
+  if (valid.length && Date.now() > lastProd + 900e3 && valid.every(s => (s.forecastTomorrow || []).length)) {
+    valid = valid.map(s => ({ ...s, forecast: s.forecastTomorrow }));
+    chartLabel = 'Morgen';
+  }
+  if (valid.length) {
+    const times = valid[0].forecast.map(p => new Date(p.datetime).getTime());
+    let first = times.length, last = 0;
+    times.forEach((_, i) => { if (valid.some(s => (s.forecast[i]?.power || 0) > 5)) { first = Math.min(first, i); last = Math.max(last, i); } });
+    if (first > last) { first = 0; last = times.length - 1; }
+    first = Math.max(0, first - 2); last = Math.min(times.length - 1, last + 2);
+    const t0 = times[first], t1 = times[last];
+    const stack = times.map((_, i) => { let acc = 0; return valid.map(s => (acc += s.forecast[i]?.power || 0)); });
+    const maxP = Math.max(500, ...stack.slice(first, last + 1).map(r => r[r.length - 1]));
+    const xs = t => cL + (t - t0) / (t1 - t0 || 1) * (cR - cL);
+    const ys = p => cB - p / maxP * (cB - cT);
+    svg.append(el('rect', { x: X0, y: cT - 14, width: X1 - X0, height: cB - cT + 40, rx: 10, fill: C.panel, 'fill-opacity': 0.5 }));
+    svg.append(el('text', { x: X1 - 12, y: cT + 4, 'text-anchor': 'end', 'font-size': 12, 'font-weight': 700,
+      fill: chartLabel === 'Morgen' ? C.text : C.muted }, `Verlauf ${chartLabel}`));
+    for (let k = 0; k <= 4; k++) {
+      const p = maxP * k / 4;
+      svg.append(el('line', { x1: cL, x2: cR, y1: ys(p), y2: ys(p), stroke: C.grid, 'stroke-dasharray': '2 5' }));
+      svg.append(el('text', { x: cL - 6, y: ys(p) + 4, 'text-anchor': 'end', 'font-size': 10, fill: C.muted },
+        p >= 1000 ? fmt(p / 1000, 1) + 'k' : Math.round(p)));
+    }
+    for (let j = valid.length - 1; j >= 0; j--) {
+      let top = '', bot = '';
+      for (let i = first; i <= last; i++) top += `${i === first ? 'M' : 'L'}${xs(times[i])},${ys(stack[i][j])}`;
+      for (let i = last; i >= first; i--) bot += `L${xs(times[i])},${ys(j ? stack[i][j - 1] : 0)}`;
+      svg.append(el('path', { d: top + bot + 'Z', fill: valid[j].color, 'fill-opacity': 0.55 }));
+      svg.append(el('path', { d: top, fill: 'none', stroke: valid[j].color, 'stroke-width': 1.6 }));
+    }
+    for (let i = first; i <= last; i++) {
+      const dt = new Date(times[i]);
+      if (dt.getMinutes() === 0 && dt.getHours() % 2 === 0)
+        svg.append(el('text', { x: xs(times[i]), y: cB + 16, 'text-anchor': 'middle', 'font-size': 10, fill: C.muted },
+          String(dt.getHours()).padStart(2, '0')));
+    }
+    const nowT = Date.now();
+    if (nowT > t0 && nowT < t1) {
+      svg.append(el('line', { x1: xs(nowT), x2: xs(nowT), y1: cT - 6, y2: cB, stroke: C.now, 'stroke-width': 2 }));
+      svg.append(el('text', { x: xs(nowT) + 4, y: cT, 'font-size': 10, fill: C.now }, 'jetzt'));
+    }
+  }
+  svg.append(el('text', { x: X1, y: H - 6, 'text-anchor': 'end', 'font-size': 10, fill: C.muted },
+    `ICON-D2 PV-Prognose · ${new Date().toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}`));
+
+  wrap.innerHTML = ''; wrap.append(svg);
+}
+
+let rt;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(draw, 150); });
+draw();
+setInterval(draw, 30000);
+</script>
+</body>
+</html>

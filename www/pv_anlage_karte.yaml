@@ -1,0 +1,10 @@
+# Webseiten-Karte für die PV-Visualisierung
+# Voraussetzung: pv_anlage.html liegt unter /config/www/pv_anlage.html
+# Entity-IDs an deine Namen anpassen (jeweils der Sensor "Energie heute" des Strings)
+type: iframe
+url: >-
+  /local/pv_anlage.html?ost=sensor.pv_prognose_dach_ost_energie_heute&sued=sensor.pv_prognose_dach_sud_energie_heute&west=sensor.pv_prognose_dach_west_energie_heute&zaun=sensor.pv_prognose_pv_zaun_energie_heute&gesamt=sensor.pv_prognose_energie_heute&v=1
+aspect_ratio: 34%
+grid_options:
+  columns: full
+  rows: auto

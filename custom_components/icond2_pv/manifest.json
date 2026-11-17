@@ -1,0 +1,13 @@
+{
+  "domain": "icond2_pv",
+  "name": "ICON-D2 PV-Prognose",
+  "after_dependencies": ["recorder"],
+  "codeowners": ["@stefanharm"],
+  "config_flow": true,
+  "documentation": "https://github.com/stefanharm/PV_Forecast",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/stefanharm/PV_Forecast/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
